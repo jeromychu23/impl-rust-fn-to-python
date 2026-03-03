@@ -11,43 +11,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build conda package in cos7 container (reliable mount)
+      - name: Build conda package in cos7 container (produce host-visible artifacts)
         run: |
           set -euo pipefail
           echo "workspace=$GITHUB_WORKSPACE"
-          ls -la
+          rm -rf conda-out
+          mkdir -p conda-out
 
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/work:rw" \
+            -w /work \
             --entrypoint /bin/bash \
-            --user 0:0 \
+            --user "$(id -u):$(id -g)" \
             condaforge/linux-anvil-cos7-x86_64 \
             -lc '
               set -euo pipefail
               echo "=== inside container ==="
               whoami
               pwd
-              echo "=== /work ==="
-              ls -la /work
-              test -d /work/recipe || (echo "ERROR: /work/recipe not found (mount failed)" && exit 1)
-
-              cd /work
-              echo "=== now in /work ==="
-              pwd
+              ls -la
               ls -la recipe
 
               # install build tooling (NO conda-verify; conflicts with pinned py312 in image)
               mamba install -y conda-build boa conda-package-handling binutils -c conda-forge
 
-              # build package
-              conda mambabuild recipe -c conda-forge --output-folder conda-out
+              # IMPORTANT: write to an absolute path on the mounted volume
+              conda mambabuild recipe -c conda-forge --output-folder /work/conda-out
 
-              echo "== produced packages =="
-              ls -la conda-out/linux-64
+              echo "== inside container: produced packages =="
+              find /work/conda-out -maxdepth 3 -type f \( -name "*.conda" -o -name "*.tar.bz2" \) | sed -n "1,80p"
             '
+
+          echo "== on host: produced packages =="
+          find conda-out -maxdepth 3 -type f \( -name "*.conda" -o -name "*.tar.bz2" \) | sed -n "1,80p"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: conda-out-linux-64
-          path: conda-out/linux-64/*.conda
+          path: |
+            conda-out/linux-64/*.conda
+            conda-out/linux-64/*.tar.bz2
