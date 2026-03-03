@@ -2,7 +2,8 @@ name: build-conda-cos7-v2
 
 on:
   workflow_dispatch:
-
+  push:
+    branches: [ main ]
 jobs:
   build:
     runs-on: ubuntu-latest
