@@ -28,11 +28,11 @@ jobs:
 
               # Extract newest .conda and check GLIBC requirements
               python -c "import glob, os, shutil; from conda_package_handling.api import extract; \
-pkgs=sorted(glob.glob(\"conda-out/linux-64/*.conda\")); \
-assert pkgs, \"No .conda produced\"; \
-pkg=pkgs[-1]; out=\"/tmp/extracted_pkg\"; \
-shutil.rmtree(out, ignore_errors=True); os.makedirs(out, exist_ok=True); \
-extract(pkg, out); print(\"pkg:\", pkg)"
+              pkgs=sorted(glob.glob(\"conda-out/linux-64/*.conda\")); \
+              assert pkgs, \"No .conda produced\"; \
+              pkg=pkgs[-1]; out=\"/tmp/extracted_pkg\"; \
+              shutil.rmtree(out, ignore_errors=True); os.makedirs(out, exist_ok=True); \
+              extract(pkg, out); print(\"pkg:\", pkg)"
 
               SO=$(find /tmp/extracted_pkg -name "*.so" | head -n 1)
               echo "SO=$SO"
