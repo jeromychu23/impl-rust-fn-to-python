@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build conda package in cos7 container (produce host-visible artifacts)
+      - name: Build conda package in cos7 container (host-visible artifacts)
         run: |
           set -euo pipefail
           echo "workspace=$GITHUB_WORKSPACE"
@@ -22,12 +22,11 @@ jobs:
             -v "$GITHUB_WORKSPACE:/work:rw" \
             -w /work \
             --entrypoint /bin/bash \
-            --user "$(id -u):$(id -g)" \
             condaforge/linux-anvil-cos7-x86_64 \
             -lc '
               set -euo pipefail
               echo "=== inside container ==="
-              whoami
+              id || true
               pwd
               ls -la
               ls -la recipe
@@ -35,7 +34,7 @@ jobs:
               # install build tooling (NO conda-verify; conflicts with pinned py312 in image)
               mamba install -y conda-build boa conda-package-handling binutils -c conda-forge
 
-              # IMPORTANT: write to an absolute path on the mounted volume
+              # write to mounted volume
               conda mambabuild recipe -c conda-forge --output-folder /work/conda-out
 
               echo "== inside container: produced packages =="
