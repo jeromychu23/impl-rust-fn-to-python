@@ -1,0 +1,34 @@
+{% set name = "hello-rust" %}
+{% set version = "0.1.0" %}
+
+package:
+  name: {{ name|lower }}
+  version: {{ version }}
+
+source:
+  path: ..
+
+build:
+  number: 0
+  script: {{ PYTHON }} -m pip install . -vv
+
+requirements:
+  build:
+    - {{ compiler('c') }}
+    - rust
+  host:
+    - python 3.8.*
+    - pip
+    - maturin >=1.0,<2.0
+  run:
+    - python 3.8.*
+
+test:
+  imports:
+    - hello_rust
+  commands:
+    - python -c "import hello_rust; assert hello_rust.add(2, 3) == 5"
+
+about:
+  summary: "A tiny Rust extension for Python"
+  license: MIT
