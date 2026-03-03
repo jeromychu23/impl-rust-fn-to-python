@@ -17,11 +17,11 @@ requirements:
     - {{ compiler('c') }}
     - rust
   host:
-    - python 3.9.*
+    - python 3.11.*
     - pip
     - maturin >=1.0,<2.0
   run:
-    - python >=3.9,<3.10
+    - python 3.11.*
 
 test:
   imports:
