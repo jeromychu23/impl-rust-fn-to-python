@@ -24,6 +24,8 @@ jobs:
   build-conda:
     name: Build conda package on Linux
     runs-on: ubuntu-latest
+    env:
+      CONDA_PKGS_DIRS: /home/runner/conda_pkgs
 
     steps:
       - name: Checkout repository
@@ -52,19 +54,17 @@ jobs:
           conda-solver: classic
 
       # Put conda pkgs in a stable place we can cache
-      - name: Configure conda pkgs dir
+      - name: Configure conda cache dir
         shell: bash -l {0}
         run: |
           mkdir -p $HOME/conda_pkgs
-          conda config --set pkgs_dirs $HOME/conda_pkgs
           conda config --set solver classic
           conda info
 
       - name: Cache conda packages
         uses: actions/cache@v4
         with:
-          path: |
-            ~/conda_pkgs
+          path: /home/runner/conda_pkgs
           key: ${{ runner.os }}-conda-${{ hashFiles('recipe/meta.yaml') }}
           restore-keys: |
             ${{ runner.os }}-conda-
