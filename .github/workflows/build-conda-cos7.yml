@@ -15,7 +15,7 @@ jobs:
             -v "$PWD":/work -w /work \
             condaforge/linux-anvil-cos7-x86_64 \
             bash -lc "
-              mamba install -y conda-build boa conda-verify conda-package-handling binutils -c conda-forge &&
+              mamba install -y conda-build boa conda-package-handling binutils -c conda-forge &&
               conda mambabuild recipe -c conda-forge --output-folder conda-out &&
               ls -la conda-out/linux-64 &&
               python - <<'PY'
