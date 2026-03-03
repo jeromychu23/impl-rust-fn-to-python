@@ -48,26 +48,20 @@ jobs:
         with:
           auto-update-conda: false
           python-version: "3.11"
-          channels: conda-forge,defaults
+          channels: conda-forge
           channel-priority: strict
           activate-environment: build-env
           conda-solver: classic
 
-      # Put conda pkgs in a stable place we can cache
-      - name: Configure conda cache dir
+      - name: Configure conda network retries/timeouts
         shell: bash -l {0}
         run: |
-          mkdir -p $HOME/conda_pkgs
           conda config --set solver classic
+          conda config --set remote_connect_timeout_secs 60
+          conda config --set remote_read_timeout_secs 300
+          conda config --set remote_max_retries 10
+          conda config --set remote_backoff_factor 2
           conda info
-
-      - name: Cache conda packages
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/conda_pkgs
-          key: ${{ runner.os }}-conda-${{ hashFiles('recipe/meta.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-conda-
 
       - name: Install build dependencies
         shell: bash -l {0}
