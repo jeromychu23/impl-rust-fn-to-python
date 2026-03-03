@@ -23,7 +23,7 @@ on:
 jobs:
   build-conda:
     name: Build conda package on Linux
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     env:
       CONDA_PKGS_DIRS: /home/runner/conda_pkgs
 
