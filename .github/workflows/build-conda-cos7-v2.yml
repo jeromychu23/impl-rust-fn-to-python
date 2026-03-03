@@ -13,19 +13,21 @@ jobs:
       - name: Build conda package in cos7 container
         run: |
           set -euo pipefail
+          echo "workspace=$GITHUB_WORKSPACE"
+          ls -la
           docker run --rm \
-            -v "$PWD":/work -w /work \
+            -v "$GITHUB_WORKSPACE:/work" -w /work \
             condaforge/linux-anvil-cos7-x86_64 \
             bash -lc '
               set -euo pipefail
+              pwd
+              ls -la
+              ls -la recipe || (echo "recipe/ not found" && exit 1)
 
-              # NOTE: do NOT install conda-verify (image pins python 3.12.*; conda-verify conflicts)
               mamba install -y conda-build boa conda-package-handling binutils -c conda-forge
-
               conda mambabuild recipe -c conda-forge --output-folder conda-out
-              echo "== produced packages =="
               ls -la conda-out/linux-64
-
+            
               # Extract newest .conda and check GLIBC requirements
               python -c "import glob, os, shutil; from conda_package_handling.api import extract; \
               pkgs=sorted(glob.glob(\"conda-out/linux-64/*.conda\")); \
