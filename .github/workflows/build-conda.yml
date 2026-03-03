@@ -3,50 +3,80 @@ name: Build Conda Package
 on:
   push:
     branches: [main, master]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/**"
+      - "pyproject.toml"
+      - "recipe/**"
+      - ".github/workflows/build-conda.yml"
   pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "src/**"
+      - "pyproject.toml"
+      - "recipe/**"
+      - ".github/workflows/build-conda.yml"
   workflow_dispatch:
 
 jobs:
   build-conda:
     name: Build conda package on Linux
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    env:
+      CONDA_NO_PLUGINS: "true"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Set up Miniconda
         uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: false
           python-version: "3.11"
-          channels: conda-forge,defaults
+          channels: conda-forge
           channel-priority: strict
           activate-environment: build-env
           conda-solver: classic
 
-      - name: Force classic solver
+      - name: Pin conda & conda-build (stabilize)
         shell: bash -l {0}
         run: |
+          # 避開 __glibc/__linux 這組 virtual packages 被當成真實依賴的 bug
+          conda install -y -c conda-forge "conda=24.7.*" "conda-build=24.7.*"
           conda config --set solver classic
+
+          # 讓網路更耐抖
+          conda config --set remote_connect_timeout_secs 60
+          conda config --set remote_read_timeout_secs 300
+          conda config --set remote_max_retries 10
+          conda config --set remote_backoff_factor 2
+
           conda info
 
       - name: Install build dependencies
         shell: bash -l {0}
         run: |
-          conda install -y conda-build pip python=3.11 maturin rust
+          conda install -y -c conda-forge conda-build pip python=3.11 maturin rust
 
       - name: Build conda package to fixed output folder
         shell: bash -l {0}
         run: |
           mkdir -p $GITHUB_WORKSPACE/conda-out
           conda build recipe -c conda-forge --output-folder $GITHUB_WORKSPACE/conda-out
-
-      - name: List built files
-        shell: bash -l {0}
-        run: |
-          echo "=== conda-out ==="
-          find $GITHUB_WORKSPACE/conda-out -maxdepth 3 -type f | sort || true
 
       - name: Upload conda artifact
         uses: actions/upload-artifact@v4
@@ -55,6 +85,4 @@ jobs:
           path: |
             ${{ github.workspace }}/conda-out/linux-64/*.conda
             ${{ github.workspace }}/conda-out/linux-64/*.tar.bz2
-            ${{ github.workspace }}/conda-out/noarch/*.conda
-            ${{ github.workspace }}/conda-out/noarch/*.tar.bz2
           if-no-files-found: error
