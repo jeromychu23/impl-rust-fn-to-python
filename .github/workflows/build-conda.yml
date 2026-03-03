@@ -18,7 +18,7 @@ jobs:
       - name: Set up Miniconda
         uses: conda-incubator/setup-miniconda@v3
         with:
-          auto-update-conda: true
+          auto-update-conda: false
           python-version: "3.8"
           channels: conda-forge,defaults
           channel-priority: strict
@@ -36,26 +36,25 @@ jobs:
         run: |
           conda install -y conda-build pip python=3.8 maturin rust
 
-      - name: Build conda package
+      - name: Build conda package to fixed output folder
         shell: bash -l {0}
         run: |
-          conda build recipe -c conda-forge
+          mkdir -p $GITHUB_WORKSPACE/conda-out
+          conda build recipe -c conda-forge --output-folder $GITHUB_WORKSPACE/conda-out
 
       - name: List built files
         shell: bash -l {0}
         run: |
-          echo "=== /usr/share/miniconda/conda-bld ==="
-          find /usr/share/miniconda/conda-bld -maxdepth 3 -type f | sort || true
-          echo "=== HOME conda-bld ==="
-          find ~/conda-bld -maxdepth 3 -type f | sort || true
+          echo "=== conda-out ==="
+          find $GITHUB_WORKSPACE/conda-out -maxdepth 3 -type f | sort || true
 
       - name: Upload conda artifact
         uses: actions/upload-artifact@v4
         with:
           name: conda-linux-64
           path: |
-            /usr/share/miniconda/conda-bld/linux-64/*.conda
-            /usr/share/miniconda/conda-bld/linux-64/*.tar.bz2
-            /home/runner/conda-bld/linux-64/*.conda
-            /home/runner/conda-bld/linux-64/*.tar.bz2
+            ${{ github.workspace }}/conda-out/linux-64/*.conda
+            ${{ github.workspace }}/conda-out/linux-64/*.tar.bz2
+            ${{ github.workspace }}/conda-out/noarch/*.conda
+            ${{ github.workspace }}/conda-out/noarch/*.tar.bz2
           if-no-files-found: error
