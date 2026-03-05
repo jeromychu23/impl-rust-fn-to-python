@@ -317,6 +317,12 @@ fn propagate_target_rows(
                 break;
             }
 
+            if let Some(kv) = block_key {
+                if matches_kv(&candidate, kv)? {
+                    break;
+                }
+            }
+
             let para_val = candidate
                 .get_item(para_col)?
                 .and_then(|x| x.extract::<String>().ok());
