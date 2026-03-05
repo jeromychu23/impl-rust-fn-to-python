@@ -170,6 +170,45 @@ fn choose_candidate_by_plan(
     Ok(best_idx)
 }
 
+fn has_self_blocker_before_start(
+    py: Python<'_>,
+    rows: &[Py<PyDict>],
+    self_index_all: &HashMap<String, Vec<usize>>,
+    start_idx: usize,
+    start_self_key: &str,
+    start_target: &Bound<'_, PyAny>,
+    target_col: &str,
+    block_key: &HashMap<String, String>,
+) -> PyResult<bool> {
+    let Some(same_self_indices) = self_index_all.get(start_self_key) else {
+        return Ok(false);
+    };
+
+    for idx in same_self_indices {
+        if *idx == start_idx {
+            continue;
+        }
+
+        let row = rows[*idx].bind(py);
+        if !matches_kv(&row, block_key)? {
+            continue;
+        }
+
+        let Some(block_target) = row.get_item(target_col)? else {
+            continue;
+        };
+        if !is_valid_target(Some(block_target.clone())) {
+            continue;
+        }
+
+        if compare_bool(&block_target, start_target, CompareOp::Le) {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
 /// For each row, walk through parent links (single-path DFS over ancestor chain) until a parent
 /// column starts with the configured prefix, then replace that row's target column with the matched
 /// ancestor row's target value.
@@ -181,9 +220,11 @@ fn choose_candidate_by_plan(
 /// If no valid candidate is found, the original value is kept unchanged.
 ///
 /// block_key:
-/// - Optional key/value matcher applied to each selected candidate during ancestor traversal.
-/// - If a candidate matches block_key, traversal stops immediately and the original target
-///   value remains unchanged (i.e., blocker events terminate chain resolution).
+/// - Optional key/value matcher applied in two places:
+///   1) same-self history check: if the current self already has a blocker event at or before
+///      this row's target_col, propagation is skipped for this row.
+///   2) ancestor traversal: if a selected candidate matches block_key, traversal stops.
+/// - In both cases, the original target value remains unchanged.
 fn propagate_target_rows(
     py: Python<'_>,
     rows: &[Py<PyDict>],
@@ -196,6 +237,12 @@ fn propagate_target_rows(
     para_prefix: &str,
     plan: Plan,
 ) -> PyResult<()> {
+    let mut self_index_all: HashMap<String, Vec<usize>> = HashMap::new();
+    for (i, row) in rows.iter().enumerate() {
+        let key = composite_key(&row.bind(py), self_cols)?;
+        self_index_all.entry(key).or_default().push(i);
+    }
+
     let mut active_indices = Vec::new();
     for (i, row) in rows.iter().enumerate() {
         if matches_kv(&row.bind(py), target_key)? {
@@ -217,6 +264,22 @@ fn propagate_target_rows(
         };
         if !is_valid_target(Some(start_target.clone())) {
             continue;
+        }
+
+        let start_self_key = composite_key(&start_row, self_cols)?;
+        if let Some(kv) = block_key {
+            if has_self_blocker_before_start(
+                py,
+                rows,
+                &self_index_all,
+                start_idx,
+                &start_self_key,
+                &start_target,
+                target_col,
+                kv,
+            )? {
+                continue;
+            }
         }
 
         let mut current_parent = composite_key(&start_row, parent_cols)?;
@@ -430,6 +493,72 @@ mod tests {
                 .extract()
                 .expect("leaf ts string");
             assert_eq!(leaf_ts_blocked, "4");
+        });
+    }
+
+    #[test]
+    fn self_history_blocker_prevents_propagation() {
+        Python::attach(|py| {
+            let rows: Vec<Py<PyDict>> = vec![
+                [
+                    ("id", "parent"),
+                    ("parent_id", "root"),
+                    ("event", "Install"),
+                    ("kind", "target"),
+                    ("ts", "1"),
+                ],
+                [
+                    ("id", "leaf"),
+                    ("parent_id", "parent"),
+                    ("event", "Remove"),
+                    ("kind", "other"),
+                    ("ts", "2"),
+                ],
+                [
+                    ("id", "leaf"),
+                    ("parent_id", "parent"),
+                    ("event", "Install"),
+                    ("kind", "target"),
+                    ("ts", "3"),
+                ],
+            ]
+            .into_iter()
+            .map(|pairs| {
+                let d = PyDict::new(py);
+                for (k, v) in pairs {
+                    d.set_item(k, v).expect("set test item");
+                }
+                d.unbind()
+            })
+            .collect();
+
+            let self_cols = vec!["id".to_string()];
+            let parent_cols = vec!["parent_id".to_string()];
+            let target_key = HashMap::from([("kind".to_string(), "target".to_string())]);
+            let blocker = HashMap::from([("event".to_string(), "Remove".to_string())]);
+
+            propagate_target_rows(
+                py,
+                &rows,
+                &self_cols,
+                &parent_cols,
+                "ts",
+                &target_key,
+                Some(&blocker),
+                "event",
+                "Install",
+                Plan::Backward,
+            )
+            .expect("propagation with self-history blocker");
+
+            let leaf_install_ts: String = rows[2]
+                .bind(py)
+                .get_item("ts")
+                .expect("leaf install ts item")
+                .expect("leaf install ts exists")
+                .extract()
+                .expect("leaf install ts string");
+            assert_eq!(leaf_install_ts, "3");
         });
     }
 }
