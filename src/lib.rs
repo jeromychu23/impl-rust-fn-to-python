@@ -278,7 +278,8 @@ fn propagate_target_rows(
     Ok(())
 }
 
-#[pyfunction(signature = (df, self_cols, parent_cols, target_col, target_key, para, plan, block_key=None))]
+#[pyfunction]
+#[pyo3(signature = (df, self_cols, parent_cols, target_col, target_key, para, plan, block_key=None))]
 fn propagate_target_from_ancestor(
     py: Python<'_>,
     df: &Bound<'_, PyAny>,
