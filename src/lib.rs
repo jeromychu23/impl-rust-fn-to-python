@@ -215,9 +215,10 @@ fn has_blocker_on_node_after_target(
 /// If no valid candidate is found, the original value is kept unchanged.
 ///
 /// block_key:
-/// - Optional key/value matcher applied at node level for both self and ancestor nodes.
-/// - For the current self and each ancestor node encountered during traversal, if that node
-///   has any blocker event with target_col > current reference target, traversal is terminated.
+/// - Optional key/value matcher applied at node level for the current parent chain.
+/// - For each parent node encountered during traversal (starting from this row's immediate
+///   parent), if that node has any blocker event with target_col > current reference target,
+///   traversal is terminated.
 /// - In that case the original target value remains unchanged.
 fn propagate_target_rows(
     py: Python<'_>,
@@ -260,21 +261,6 @@ fn propagate_target_rows(
             continue;
         }
         let anchor_target = start_target.clone();
-
-        let start_self_key = composite_key(&start_row, self_cols)?;
-        if let Some(kv) = block_key {
-            if has_blocker_on_node_after_target(
-                py,
-                rows,
-                &self_index_all,
-                &start_self_key,
-                &anchor_target,
-                target_col,
-                kv,
-            )? {
-                continue;
-            }
-        }
 
         let mut current_parent = composite_key(&start_row, parent_cols)?;
         let mut current_target = start_target;
@@ -505,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    fn node_level_self_blocker_prevents_propagation() {
+    fn node_level_self_blocker_does_not_prevent_propagation() {
         Python::attach(|py| {
             let rows: Vec<Py<PyDict>> = vec![
                 [
@@ -566,7 +552,7 @@ mod tests {
                 .expect("leaf install ts exists")
                 .extract()
                 .expect("leaf install ts string");
-            assert_eq!(leaf_install_ts, "3");
+            assert_eq!(leaf_install_ts, "1");
         });
     }
 
