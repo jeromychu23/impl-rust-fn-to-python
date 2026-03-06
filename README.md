@@ -66,28 +66,25 @@ Typical flow:
 
 A simplified event history:
 
-| ts | component | parent | event |
-|---:|:---------:|:------:|:-----:|
-| 1 | A320 | AIRCRAFT | Install |
-| 2 | ENG-1 | A320 | Install |
-| 3 | FAN-9 | ENG-1 | Install |
-| 4 | ENG-1 | A320 | Remove |
-| 5 | FAN-9 | ENG-1 | Inspect |
+| ts | component | parent | event | transaction date |
+|---:|:---------:|:------:|:-----:|:----------------:|
+| 1 | A320 | AIRCRAFT | Install | 2026-01-01 |
+| 2 | ENG-1 | A320 | Install | 2025-12-31 |
+| 3 | FAN-9 | ENG-1 | Install | 2025-12-30 |
 
-Challenge: at `ts=5`, `FAN-9` still points to parent `ENG-1`, but parent status depends on timeline and ancestor chain.
+Challenge: at `2025-12-30`, `FAN-9` installed to parent `ENG-1`, but parent haven't been installed to `AIRCRAFT`.
 
 ### Output (After)
 
 After DFS-like hierarchical evaluation:
 
-| ts | component | parent | event | ancestor_on_aircraft |
-|---:|:---------:|:------:|:-----:|:--------------------:|
-| 1 | A320 | AIRCRAFT | Install | true |
-| 2 | ENG-1 | A320 | Install | true |
-| 3 | FAN-9 | ENG-1 | Install | true |
-| 4 | ENG-1 | A320 | Remove | false |
-| 5 | FAN-9 | ENG-1 | Inspect | false |
+| ts | component | parent | event | transaction date | new transaction date |
+|---:|:---------:|:------:|:-----:|:----------------:|:--------------------:|
+| 1 | A320 | AIRCRAFT | Install | 2026-01-01 | 2026-01-01 |
+| 2 | ENG-1 | A320 | Install | 2025-12-31 | 2026-01-01 |
+| 3 | FAN-9 | ENG-1 | Install | 2025-12-30 | 2026-01-01 |
 
+Explain: All child components should point to the date when it's top parent be installed to `AIRCRAFT`.
 This extra result column is what downstream analytics need, but computing it efficiently is where Rust helps.
 
 ---
@@ -134,7 +131,5 @@ Potential next steps:
 ## 👀 Who This Is For
 
 - Data engineers dealing with hierarchical tabular data
-- MRO / aviation analytics teams
+- Aviation analytics teams (Tracking component usage)
 - Python users who need selective Rust acceleration
-
-If your bottleneck is DFS-like logic over unknown-depth parent-child structures in DataFrames, this repo is designed for you.
