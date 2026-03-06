@@ -33,13 +33,14 @@ A common real-world scenario is processing hierarchical maintenance history in t
 
 For each component event, you may need to determine:
 
-> “Is its parent (or ancestor) currently installed on the aircraft at that point in time?”
+> “Is its parent currently installed on the aircraft at that point in time?”
 
-Doing this with Python loops over large datasets often leads to:
+Doing this with multi-level join over large datasets often leads to:
 
 - High runtime cost
-- Complex DFS traversal logic
+- Complex traversal logic
 - Difficult-to-maintain code paths
+- Lack of Edge-Case Handling
 
 This repo tackles that by moving DFS-style traversal and matching logic into Rust.
 
@@ -60,7 +61,7 @@ Typical flow:
 
 ---
 
-## 📊 Example: Before vs After Hierarchical Processing
+## 📊 Example 1: Before vs After Hierarchical Processing
 
 ### Input (Before)
 
@@ -84,8 +85,37 @@ After DFS-like hierarchical evaluation:
 | 2 | ENG-1 | A320 | Install | 2025-12-31 | 2026-01-01 |
 | 3 | FAN-9 | ENG-1 | Install | 2025-12-30 | 2026-01-01 |
 
-Explain: All child components should point to the date when it's top parent be installed to `AIRCRAFT`.
+Explain: All child components should point to the date when its top parent be installed to `AIRCRAFT`.
 This extra result column is what downstream analytics need, but computing it efficiently is where Rust helps.
+
+## 📊 Example 2: Before vs After Hierarchical Processing (Include block key)
+
+### Input (Before)
+
+A simplified event history:
+
+| ts | component | parent | event | transaction date |
+|---:|:---------:|:------:|:-----:|:----------------:|
+| 1 | A320 | AIRCRAFT | Install | 2026-01-01 |
+| 2 | ENG-1 | A320 | Install | 2025-12-31 |
+| 3 | FAN-9 | ENG-1 | Remove | 2025-12-31 |
+| 4 | FAN-9 | ENG-1 | Install | 2025-12-30 |
+
+Challenge: Removal involved in the dataframe, without `block key` the install date will be set to `2026-01-01` which is unreasonable.
+
+### Output (After, with `block ley`)
+
+After DFS-like hierarchical evaluation:
+
+| ts | component | parent | event | transaction date | new transaction date |
+|---:|:---------:|:------:|:-----:|:----------------:|:--------------------:|
+| 1 | A320 | AIRCRAFT | Install | 2026-01-01 | 2026-01-01 |
+| 2 | ENG-1 | A320 | Install | 2025-12-31 | 2026-01-01 |
+| 3 | FAN-9 | ENG-1 | Remove | 2025-12-31 | 2025-12-31 |
+| 4 | FAN-9 | ENG-1 | Install | 2025-12-30 | 2025-12-30 |
+
+Explain: Set the `block key` to prevent unreasonable transaction. 
+Because `FAN-9` has been removed from its parent before installed to the `AIRCRAFT`, the transaction date should remain the same. 
 
 ---
 
