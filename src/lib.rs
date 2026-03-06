@@ -215,9 +215,10 @@ fn has_blocker_on_node_after_target(
 /// If no valid candidate is found, the original value is kept unchanged.
 ///
 /// block_key:
-/// - Optional key/value matcher applied at node level for both self and ancestor nodes.
-/// - For the current self and each ancestor node encountered during traversal, if that node
-///   has any blocker event with target_col > current reference target, traversal is terminated.
+/// - Optional key/value matcher applied at node level for the current parent chain.
+/// - For each parent node encountered during traversal (starting from this row's immediate
+///   parent), if that node has any blocker event with target_col > current reference target,
+///   traversal is terminated.
 /// - In that case the original target value remains unchanged.
 fn propagate_target_rows(
     py: Python<'_>,
@@ -259,21 +260,7 @@ fn propagate_target_rows(
         if !is_valid_target(Some(start_target.clone())) {
             continue;
         }
-
-        let start_self_key = composite_key(&start_row, self_cols)?;
-        if let Some(kv) = block_key {
-            if has_blocker_on_node_after_target(
-                py,
-                rows,
-                &self_index_all,
-                &start_self_key,
-                &start_target,
-                target_col,
-                kv,
-            )? {
-                continue;
-            }
-        }
+        let anchor_target = start_target.clone();
 
         let mut current_parent = composite_key(&start_row, parent_cols)?;
         let mut current_target = start_target;
@@ -291,7 +278,7 @@ fn propagate_target_rows(
                     rows,
                     &self_index_all,
                     &current_parent,
-                    &current_target,
+                    &anchor_target,
                     target_col,
                     kv,
                 )? {
@@ -504,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    fn node_level_self_blocker_prevents_propagation() {
+    fn node_level_self_blocker_does_not_prevent_propagation() {
         Python::attach(|py| {
             let rows: Vec<Py<PyDict>> = vec![
                 [
@@ -565,7 +552,7 @@ mod tests {
                 .expect("leaf install ts exists")
                 .extract()
                 .expect("leaf install ts string");
-            assert_eq!(leaf_install_ts, "3");
+            assert_eq!(leaf_install_ts, "1");
         });
     }
 
@@ -639,6 +626,86 @@ mod tests {
                 .extract()
                 .expect("leaf ts string");
             assert_eq!(leaf_ts, "7");
+        });
+    }
+
+    #[test]
+    fn blocker_checks_use_start_target_as_anchor_across_ancestors() {
+        Python::attach(|py| {
+            let rows: Vec<Py<PyDict>> = vec![
+                [
+                    ("id", "gp"),
+                    ("parent_id", "root"),
+                    ("event", "Install"),
+                    ("kind", "target"),
+                    ("ts", "2022-01-01T00:00:00.000Z"),
+                ],
+                [
+                    ("id", "gp"),
+                    ("parent_id", "root"),
+                    ("event", "Remove"),
+                    ("kind", "other"),
+                    ("ts", "2023-08-01T00:00:00.000Z"),
+                ],
+                [
+                    ("id", "p"),
+                    ("parent_id", "gp"),
+                    ("event", "Other"),
+                    ("kind", "target"),
+                    ("ts", "2023-07-15T12:03:00.000Z"),
+                ],
+                [
+                    ("id", "p"),
+                    ("parent_id", "gp"),
+                    ("event", "Remove"),
+                    ("kind", "other"),
+                    ("ts", "2023-07-15T12:00:00.000Z"),
+                ],
+                [
+                    ("id", "leaf"),
+                    ("parent_id", "p"),
+                    ("event", "Other"),
+                    ("kind", "target"),
+                    ("ts", "2024-02-05T16:30:00.000Z"),
+                ],
+            ]
+            .into_iter()
+            .map(|pairs| {
+                let d = PyDict::new(py);
+                for (k, v) in pairs {
+                    d.set_item(k, v).expect("set test item");
+                }
+                d.unbind()
+            })
+            .collect();
+
+            let self_cols = vec!["id".to_string()];
+            let parent_cols = vec!["parent_id".to_string()];
+            let target_key = HashMap::from([("kind".to_string(), "target".to_string())]);
+            let blocker = HashMap::from([("event".to_string(), "Remove".to_string())]);
+
+            propagate_target_rows(
+                py,
+                &rows,
+                &self_cols,
+                &parent_cols,
+                "ts",
+                &target_key,
+                Some(&blocker),
+                "event",
+                "Install",
+                Plan::Backward,
+            )
+            .expect("propagation with anchored blocker checks");
+
+            let leaf_ts: String = rows[4]
+                .bind(py)
+                .get_item("ts")
+                .expect("leaf ts item")
+                .expect("leaf ts exists")
+                .extract()
+                .expect("leaf ts string");
+            assert_eq!(leaf_ts, "2022-01-01T00:00:00.000Z");
         });
     }
 }
