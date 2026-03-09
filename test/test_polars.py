@@ -5,13 +5,9 @@ import polars as pl
 import hello_rust
 
 
-def _normalize(df: pl.DataFrame) -> pl.DataFrame:
-    return df.sort(["id", "ts"]).select(sorted(df.columns))
-
-
 def test_propagate_target_from_ancestor_from_local_csv() -> None:
     csv_path = Path(__file__).parent / "data" / "pivot_input.csv"
-    source_df = pl.read_csv(csv_path, try_parse_dates=False)
+    source_df = pl.read_csv(csv_path, try_parse_dates=True)
     
     source_df = (
         source_df
@@ -59,3 +55,6 @@ def test_propagate_target_from_ancestor_from_local_csv() -> None:
 
     # compare removed for now; print output only
     # test command .\.venv\Scripts\python -m pytest -s -q test/test_polars.py
+
+if __name__ == "__main__":
+    test_propagate_target_from_ancestor_from_local_csv()
